@@ -20,6 +20,9 @@ import {ModelAsset} from '../catalog.service';
       }
       
       <div #viewerContainer class="w-full h-96 bg-gray-100 rounded-lg overflow-hidden relative"></div>
+      @if (selectedScreenshot()) {
+        <img [src]="selectedScreenshot()" alt="Preview" class="w-full h-96 object-contain mt-4 rounded-lg border" />
+      }
       
       <div class="mt-4 p-4 bg-white shadow rounded-lg">
         <h3 class="font-semibold">Technische Daten:</h3>
@@ -59,14 +62,16 @@ export class ModelViewer implements AfterViewInit {
   private camera!: THREE.PerspectiveCamera;
   private renderer!: THREE.WebGLRenderer;
   private controls!: OrbitControls;
-  private model: THREE.Object3D | null = null;
+  private  model: THREE.Object3D | null = null;
   capturedScreenshots = signal<string[]>([]);
+  selectedScreenshot = signal<string | null>(null);
 
-  async loadModel(model: ModelAsset) {
+  async loadModel(model: ModelAsset, screenshotIndex = 0) {
     this.modelName = model.name;
     this.triangleCount.set(model.polygonCount);
     this.description.set(model.description);
     this.capturedScreenshots.set(model.screenshots);
+    this.selectedScreenshot.set(model.screenshots[screenshotIndex] || model.screenshots[0] || null);
     
     const arrayBuffer = await model.fileData.arrayBuffer();
     
@@ -167,6 +172,8 @@ export class ModelViewer implements AfterViewInit {
         
         if (this.model) {
           this.triangleCount.set(this.calculateTriangleCount(this.model));
+          this.captureCurrentScreenshot();
+          this.selectedScreenshot.set(this.capturedScreenshots()[0]);
         }
       } catch {
         this.errorMessage.set('Fehler beim Verarbeiten des Modells.');
@@ -192,8 +199,10 @@ export class ModelViewer implements AfterViewInit {
   }
 
   captureCurrentScreenshot() {
+    this.renderer.render(this.scene, this.camera);
     const dataURL = this.renderer.domElement.toDataURL('image/png');
     this.capturedScreenshots.update(list => [...list, dataURL]);
+    if (!this.selectedScreenshot()) this.selectedScreenshot.set(dataURL);
   }
 
   captureAngle(x: number, y: number, z: number) {
@@ -202,6 +211,7 @@ export class ModelViewer implements AfterViewInit {
     this.renderer.render(this.scene, this.camera);
     const dataURL = this.renderer.domElement.toDataURL('image/png');
     this.capturedScreenshots.update(list => [...list, dataURL]);
+    if (!this.selectedScreenshot()) this.selectedScreenshot.set(dataURL);
   }
 
   captureScreenshots() {

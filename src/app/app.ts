@@ -41,8 +41,8 @@ export class App {
     alert('Modell gespeichert!');
   }
 
-  onSelectModel(model: ModelAsset) {
-    this.currentModel.set(model);
-    this.modelViewer.loadModel(model);
+  onSelectModel(event: {model: ModelAsset, screenshotIndex: number}) {
+    this.currentModel.set(event.model);
+    this.modelViewer.loadModel(event.model, event.screenshotIndex);
   }
 }

@@ -5,18 +5,20 @@ import {CommonModule} from '@angular/common';
 @Component({
   selector: 'app-catalog-view',
   template: `
-    <div class="p-4">
-      <h2 class="text-xl font-bold mb-4">Katalog</h2>
-      <div class="grid grid-cols-2 gap-4">
+    <div class="p-6 bg-slate-950 text-slate-100 min-h-screen">
+      <h2 class="font-serif text-3xl text-amber-500 mb-8 tracking-tight">Katalog</h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         @for (model of models; track model.id) {
-          <div (click)="selectModel.emit(model)" (keyup.enter)="selectModel.emit(model)" tabindex="0" class="p-2 border rounded cursor-pointer hover:bg-gray-100">
-            <div class="flex gap-1 overflow-x-auto mb-2">
-              @for (screenshot of model.screenshots; track screenshot) {
-                <img [src]="screenshot" [alt]="model.name" class="w-16 h-16 object-cover rounded" />
+          <div class="bg-slate-900/50 border border-amber-900/30 backdrop-blur-sm rounded-xl p-4 transition hover:border-amber-500/50 cursor-pointer">
+            <div class="flex gap-2 overflow-x-auto mb-4 pb-2">
+              @for (screenshot of model.screenshots; track screenshot; let i = $index) {
+                <button (click)="selectModel.emit({model, screenshotIndex: i})" class="w-20 h-20 p-0 border-0 rounded-lg overflow-hidden flex-shrink-0">
+                  <img [src]="screenshot" [alt]="model.name" loading="lazy" class="w-full h-full object-cover" />
+                </button>
               }
             </div>
-            <p class="font-semibold">{{model.name}}</p>
-            <p class="text-sm text-gray-600 truncate">{{model.description}}</p>
+            <button (click)="selectModel.emit({model, screenshotIndex: 0})" class="block w-full text-left font-serif text-xl text-amber-100 mb-1">{{model.name}}</button>
+            <button (click)="selectModel.emit({model, screenshotIndex: 0})" class="block w-full text-left font-mono text-xs text-slate-400 truncate">{{model.description}}</button>
           </div>
         }
       </div>
@@ -27,7 +29,7 @@ import {CommonModule} from '@angular/common';
 })
 export class CatalogView {
   models: ModelAsset[] = [];
-  @Output() selectModel = new EventEmitter<ModelAsset>();
+  @Output() selectModel = new EventEmitter<{model: ModelAsset, screenshotIndex: number}>();
   private catalog = inject(CatalogService);
 
   constructor() {
