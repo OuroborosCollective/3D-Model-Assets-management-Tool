@@ -1,19 +1,40 @@
-import {Component, ElementRef, ViewChild, AfterViewInit, signal, inject, Output, EventEmitter, PLATFORM_ID} from '@angular/core';
+import {Component, ElementRef, ViewChild, AfterViewInit, signal, inject, Output, EventEmitter, PLATFORM_ID, computed} from '@angular/core';
 import {isPlatformBrowser} from '@angular/common';
 import {FormsModule} from '@angular/forms';
+import {DomSanitizer} from '@angular/platform-browser';
 import * as THREE from 'three';
 import {GLTFLoader} from 'three/examples/jsm/loaders/GLTFLoader.js';
 import {FBXLoader} from 'three/examples/jsm/loaders/FBXLoader.js';
 import {OrbitControls} from 'three/examples/jsm/controls/OrbitControls.js';
 import {DescriptionGeneratorService} from '../description-generator.service';
 import {ModelAsset} from '../catalog.service';
+import {marked} from 'marked';
 
 @Component({
   selector: 'app-model-viewer',
   template: `
     <div class="p-4">
       <h2 class="text-xl font-bold mb-4">3D Modell Viewer</h2>
-      <input type="text" [(ngModel)]="modelName" placeholder="Modellname" class="mb-2 block w-full p-2 border rounded" />
+      
+      <div class="mb-4">
+        <label for="model-name" class="block text-sm font-medium text-gray-700 mb-1">Modellname</label>
+        <div class="relative">
+          <input 
+            id="model-name"
+            type="text" 
+            [ngModel]="modelName()" 
+            (ngModelChange)="modelName.set($event)" 
+            placeholder="Geben Sie einen aussagekräftigen Namen ein..." 
+            class="block w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+            maxlength="100"
+          />
+          <div class="absolute right-2 bottom-2 text-[10px] text-gray-400">
+            {{ modelName().length }}/100
+          </div>
+        </div>
+        <p class="text-[10px] text-gray-400 mt-1">Ein guter Name hilft bei der Suche und Kategorisierung.</p>
+      </div>
+
       <input type="file" (change)="onFileSelected($event)" class="mb-4 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" accept=".glb,.gltf,.fbx" />
       @if (errorMessage()) {
         <div class="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -41,7 +62,11 @@ import {ModelAsset} from '../catalog.service';
         }
       </div>
       @if (selectedScreenshot()) {
-        <img [src]="selectedScreenshot()" alt="Preview" class="w-full h-96 object-contain mt-4 rounded-lg border cursor-pointer" (click)="openLargePreview(selectedScreenshot()!)" (keydown.enter)="openLargePreview(selectedScreenshot()!)" tabindex="0" role="button" />
+        <div class="mt-4">
+          <h3 class="text-sm font-semibold mb-2 text-gray-700">Vorschau-Screenshot:</h3>
+          <img [src]="selectedScreenshot()" alt="Preview" class="w-full h-96 object-contain rounded-lg border bg-black cursor-pointer shadow-inner" (click)="openLargePreview(selectedScreenshot()!)" (keydown.enter)="openLargePreview(selectedScreenshot()!)" tabindex="0" role="button" />
+          <p class="text-[10px] text-gray-400 mt-1 text-center italic">Klicken zum Vergrößern</p>
+        </div>
       }
       
       @if (largePreviewUrl()) {
@@ -170,13 +195,13 @@ import {ModelAsset} from '../catalog.service';
         </div>
 
         <div class="border-t pt-4">
-          <button (click)="generateDescription()" class="w-full bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition mb-2">KI-Beschreibung generieren</button>
-          <button (click)="onSave()" class="w-full bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition">In Katalog speichern</button>
+          <button (click)="generateDescription()" [disabled]="isLoading() || !modelName()" class="w-full bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition mb-2 disabled:bg-gray-400 disabled:cursor-not-allowed">KI-Beschreibung generieren</button>
+          <button (click)="onSave()" [disabled]="isLoading() || !currentFileBlob" class="w-full bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition disabled:bg-gray-400 disabled:cursor-not-allowed">In Katalog speichern</button>
         </div>
         
         @if (description()) {
-          <div class="mt-4 p-3 bg-slate-50 rounded border text-sm prose max-w-none">
-            {{ description() }}
+          <div class="mt-4 p-4 bg-slate-50 rounded-lg border text-sm prose prose-slate max-w-none shadow-inner overflow-auto max-h-96">
+            <div [innerHTML]="parsedDescription()"></div>
           </div>
         }
         
@@ -195,9 +220,17 @@ export class ModelViewer implements AfterViewInit {
   @Output() saveModel = new EventEmitter<{name: string, triangleCount: number, description: string, screenshots: string[], fileData: Blob, fileName: string}>();
   
   protected readonly Math = Math;
-  modelName = '';
+  modelName = signal('');
   triangleCount = signal(0);
   description = signal('');
+  
+  parsedDescription = computed(() => {
+    const raw = this.description();
+    if (!raw) return '';
+    const html = marked.parse(raw) as string;
+    return this.sanitizer.bypassSecurityTrustHtml(html);
+  });
+
   errorMessage = signal('');
   errorSuggestion = signal('');
   loadingProgress = signal(0);
@@ -225,12 +258,13 @@ export class ModelViewer implements AfterViewInit {
   private textureLoader = new THREE.TextureLoader();
   private descService = inject(DescriptionGeneratorService);
   private platformId = inject(PLATFORM_ID);
+  private sanitizer = inject(DomSanitizer);
   private scene!: THREE.Scene;
   private camera!: THREE.PerspectiveCamera;
   private renderer!: THREE.WebGLRenderer;
   private controls!: OrbitControls;
   private model: THREE.Object3D | null = null;
-  private currentFileBlob: Blob | null = null;
+  protected currentFileBlob: Blob | null = null;
   private currentFileName = '';
   
   private ambientLight!: THREE.AmbientLight;
@@ -258,7 +292,7 @@ export class ModelViewer implements AfterViewInit {
     this.errorMessage.set('');
     this.errorSuggestion.set('');
     
-    this.modelName = model.name;
+    this.modelName.set(model.name);
     this.triangleCount.set(model.polygonCount);
     this.description.set(model.description);
     this.capturedScreenshots.set(model.screenshots);
@@ -269,13 +303,17 @@ export class ModelViewer implements AfterViewInit {
     try {
       const arrayBuffer = await model.fileData.arrayBuffer();
       
-      if (this.model) this.scene.remove(this.model);
+      if (this.model) {
+        this.scene.remove(this.model);
+        this.model = null;
+      }
       
       const loader = model.fileName.endsWith('.fbx') ? new FBXLoader() : new GLTFLoader();
       
       if (model.fileName.endsWith('.fbx')) {
         const fbxLoader = loader as FBXLoader;
-        this.model = fbxLoader.parse(arrayBuffer, '');
+        const fbxModel = fbxLoader.parse(arrayBuffer, '');
+        this.model = fbxModel;
         this.scene.add(this.model);
         this.fitModelToView(this.model);
         this.isLoading.set(false);
@@ -302,7 +340,7 @@ export class ModelViewer implements AfterViewInit {
       return;
     }
     this.saveModel.emit({
-      name: this.modelName,
+      name: this.modelName(),
       triangleCount: this.triangleCount(),
       description: this.description(),
       screenshots: this.capturedScreenshots(),
@@ -415,9 +453,27 @@ export class ModelViewer implements AfterViewInit {
     }
 
     this.isLoading.set(true);
+    this.loadingProgress.set(0);
+    this.errorMessage.set('');
+    this.errorSuggestion.set('');
+    this.triangleCount.set(0);
+    this.currentFileBlob = null;
+    this.currentFileName = '';
+    this.capturedScreenshots.set([]);
+    this.selectedScreenshot.set(null);
+    
     this.currentFileBlob = file;
     this.currentFileName = file.name;
-    if (this.model) this.scene.remove(this.model);
+    
+    // Auto-set name if empty
+    if (!this.modelName()) {
+      this.modelName.set(file.name.replace(/\.[^/.]+$/, ""));
+    }
+
+    if (this.model) {
+      this.scene.remove(this.model);
+      this.model = null;
+    }
 
     const reader = new FileReader();
     reader.onprogress = (e) => {
@@ -437,34 +493,41 @@ export class ModelViewer implements AfterViewInit {
         
         if (file.name.endsWith('.fbx')) {
           const fbxLoader = loader as FBXLoader;
-          this.model = fbxLoader.parse(e.target?.result as ArrayBuffer, '');
+          const fbxModel = fbxLoader.parse(e.target?.result as ArrayBuffer, '');
+          this.model = fbxModel;
           this.scene.add(this.model);
           this.fitModelToView(this.model);
-          this.isLoading.set(false);
-          this.loadingProgress.set(100);
+          this.onModelReady();
         } else {
           const gltfLoader = loader as GLTFLoader;
           gltfLoader.parse(e.target?.result as ArrayBuffer, '', (gltf) => {
             this.model = gltf.scene;
             this.scene.add(this.model);
             this.fitModelToView(this.model);
-            this.isLoading.set(false);
-            this.loadingProgress.set(100);
+            this.onModelReady();
           }, (error) => {
             this.handleLoadError(error);
           });
-        }
-        
-        if (this.model) {
-          this.triangleCount.set(this.calculateTriangleCount(this.model));
-          this.captureCurrentScreenshot();
-          this.selectedScreenshot.set(this.capturedScreenshots()[0]);
         }
       } catch (err) {
         this.handleLoadError(err);
       }
     };
     reader.readAsArrayBuffer(file);
+  }
+
+  private onModelReady() {
+    this.isLoading.set(false);
+    this.loadingProgress.set(100);
+    if (this.model) {
+      this.triangleCount.set(this.calculateTriangleCount(this.model));
+      // Small delay to ensure rendering is updated before capture
+      setTimeout(() => {
+        this.capturedScreenshots.set([]); // Reset for new upload
+        this.captureCurrentScreenshot();
+        this.selectedScreenshot.set(this.capturedScreenshots()[0]);
+      }, 100);
+    }
   }
 
   private handleLoadError(error: unknown) {
@@ -644,13 +707,20 @@ export class ModelViewer implements AfterViewInit {
   }
   
   async generateDescription() {
-    if (!this.modelName || this.triangleCount() === 0) {
+    if (!this.modelName() || this.triangleCount() === 0) {
       this.errorMessage.set('Bitte laden Sie zuerst ein Modell und geben Sie einen Namen ein.');
       return;
     }
     
+    this.isLoading.set(true);
     this.description.set('Generiere Beschreibung...');
-    const desc = await this.descService.generateDescription(this.modelName, this.triangleCount());
-    this.description.set(desc);
+    try {
+      const desc = await this.descService.generateDescription(this.modelName(), this.triangleCount());
+      this.description.set(desc);
+    } catch (_err) {
+      this.errorMessage.set('Fehler beim Generieren der Beschreibung.');
+    } finally {
+      this.isLoading.set(false);
+    }
   }
 }
