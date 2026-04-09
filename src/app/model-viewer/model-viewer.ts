@@ -94,6 +94,63 @@ import {ModelAsset} from '../catalog.service';
               <input id="point-intensity" type="range" min="0" max="5" step="0.1" [ngModel]="pointLightIntensity()" (ngModelChange)="pointLightIntensity.set($event)" class="w-full" />
             </div>
           </div>
+
+          <div class="mt-4 border-t pt-4">
+            <h4 class="text-sm font-bold mb-2">Spotlight Einstellungen:</h4>
+            <div class="flex items-center gap-2 mb-2">
+              <input id="spotlight-toggle" type="checkbox" [ngModel]="spotLightEnabled()" (ngModelChange)="spotLightEnabled.set($event)" />
+              <label for="spotlight-toggle" class="text-xs text-gray-500">Spotlight aktivieren</label>
+            </div>
+            @if (spotLightEnabled()) {
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label for="spot-intensity" class="block text-xs text-gray-500 mb-1">Intensität</label>
+                  <input id="spot-intensity" type="range" min="0" max="10" step="0.1" [ngModel]="spotLightIntensity()" (ngModelChange)="spotLightIntensity.set($event)" class="w-full" />
+                </div>
+                <div>
+                  <label for="spot-angle" class="block text-xs text-gray-500 mb-1">Winkel</label>
+                  <input id="spot-angle" type="range" min="0" [max]="Math.PI/2" step="0.01" [ngModel]="spotLightAngle()" (ngModelChange)="spotLightAngle.set($event)" class="w-full" />
+                </div>
+                <div>
+                  <label for="spot-color" class="block text-xs text-gray-500 mb-1">Farbe</label>
+                  <input id="spot-color" type="color" [ngModel]="spotLightColor()" (ngModelChange)="spotLightColor.set($event)" class="w-full h-8 rounded border-0 p-0" />
+                </div>
+                <div class="flex flex-col gap-1">
+                  <span class="block text-xs text-gray-500">Position (X, Y, Z)</span>
+                  <div class="flex gap-1">
+                    <input aria-label="X Position" type="number" [ngModel]="spotLightPosX()" (ngModelChange)="spotLightPosX.set($event)" class="w-full p-1 border rounded text-xs" />
+                    <input aria-label="Y Position" type="number" [ngModel]="spotLightPosY()" (ngModelChange)="spotLightPosY.set($event)" class="w-full p-1 border rounded text-xs" />
+                    <input aria-label="Z Position" type="number" [ngModel]="spotLightPosZ()" (ngModelChange)="spotLightPosZ.set($event)" class="w-full p-1 border rounded text-xs" />
+                  </div>
+                </div>
+              </div>
+            }
+          </div>
+
+          <div class="mt-4 border-t pt-4">
+            <h4 class="text-sm font-bold mb-2">Schatten Einstellungen:</h4>
+            <div class="flex items-center gap-2 mb-2">
+              <input id="shadow-toggle" type="checkbox" [ngModel]="shadowsEnabled()" (ngModelChange)="shadowsEnabled.set($event)" />
+              <label for="shadow-toggle" class="text-xs text-gray-500">Schatten aktivieren</label>
+            </div>
+            @if (shadowsEnabled()) {
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label for="shadow-bias" class="block text-xs text-gray-500 mb-1">Bias (Korrektur)</label>
+                  <input id="shadow-bias" type="range" min="-0.01" max="0.01" step="0.0001" [ngModel]="shadowBias()" (ngModelChange)="shadowBias.set($event)" class="w-full" />
+                </div>
+                <div>
+                  <label for="shadow-res" class="block text-xs text-gray-500 mb-1">Schatten-Auflösung (Directional Light)</label>
+                  <select id="shadow-res" [ngModel]="shadowResolution()" (ngModelChange)="shadowResolution.set(+$event)" class="w-full p-1 border rounded text-xs bg-white">
+                    <option [value]="512">512 (Schnell)</option>
+                    <option [value]="1024">1024 (Standard)</option>
+                    <option [value]="2048">2048 (Hoch)</option>
+                    <option [value]="4096">4096 (Ultra)</option>
+                  </select>
+                </div>
+              </div>
+            }
+          </div>
           
           <div class="mt-4">
             <label for="lighting-preset" class="block text-xs text-gray-500 mb-1">Licht-Presets</label>
@@ -137,6 +194,7 @@ export class ModelViewer implements AfterViewInit {
   @ViewChild('viewerContainer') viewerContainer!: ElementRef;
   @Output() saveModel = new EventEmitter<{name: string, triangleCount: number, description: string, screenshots: string[], fileData: Blob, fileName: string}>();
   
+  protected readonly Math = Math;
   modelName = '';
   triangleCount = signal(0);
   description = signal('');
@@ -149,6 +207,20 @@ export class ModelViewer implements AfterViewInit {
   directionalIntensity = signal(1.0);
   directionalColor = signal('#ffffff');
   pointLightIntensity = signal(0);
+  
+  // Shadow signals
+  shadowsEnabled = signal(true);
+  shadowBias = signal(-0.001);
+  shadowResolution = signal(1024);
+  
+  // Spotlight signals
+  spotLightEnabled = signal(false);
+  spotLightIntensity = signal(2.0);
+  spotLightColor = signal('#ffffff');
+  spotLightAngle = signal(Math.PI / 6);
+  spotLightPosX = signal(0);
+  spotLightPosY = signal(5);
+  spotLightPosZ = signal(0);
   
   private textureLoader = new THREE.TextureLoader();
   private descService = inject(DescriptionGeneratorService);
@@ -164,6 +236,8 @@ export class ModelViewer implements AfterViewInit {
   private ambientLight!: THREE.AmbientLight;
   private directionalLight!: THREE.DirectionalLight;
   private pointLight!: THREE.PointLight;
+  private spotLight!: THREE.SpotLight;
+  private ground!: THREE.Mesh;
 
   capturedScreenshots = signal<string[]>([]);
   selectedScreenshot = signal<string | null>(null);
@@ -250,12 +324,20 @@ export class ModelViewer implements AfterViewInit {
     this.camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
     this.renderer = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true});
     this.renderer.setSize(width, height);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.viewerContainer.nativeElement.appendChild(this.renderer.domElement);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
 
     this.directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-    this.directionalLight.position.set(1, 1, 1);
+    this.directionalLight.position.set(5, 10, 5);
+    this.directionalLight.castShadow = true;
+    this.directionalLight.shadow.mapSize.width = this.shadowResolution();
+    this.directionalLight.shadow.mapSize.height = this.shadowResolution();
+    this.directionalLight.shadow.camera.near = 0.5;
+    this.directionalLight.shadow.camera.far = 50;
+    this.directionalLight.shadow.bias = this.shadowBias();
     this.scene.add(this.directionalLight);
     
     this.ambientLight = new THREE.AmbientLight(0x404040, 0.5);
@@ -264,6 +346,20 @@ export class ModelViewer implements AfterViewInit {
     this.pointLight = new THREE.PointLight(0xffffff, 0);
     this.pointLight.position.set(0, 5, 0);
     this.scene.add(this.pointLight);
+
+    this.spotLight = new THREE.SpotLight(0xffffff, 0);
+    this.spotLight.position.set(0, 5, 0);
+    this.spotLight.castShadow = true;
+    this.scene.add(this.spotLight);
+
+    // Ground plane for shadows
+    const groundGeo = new THREE.PlaneGeometry(100, 100);
+    const groundMat = new THREE.ShadowMaterial({ opacity: 0.3 });
+    this.ground = new THREE.Mesh(groundGeo, groundMat);
+    this.ground.rotation.x = -Math.PI / 2;
+    this.ground.position.y = -2;
+    this.ground.receiveShadow = true;
+    this.scene.add(this.ground);
 
     this.camera.position.z = 5;
     this.animate();
@@ -277,10 +373,26 @@ export class ModelViewer implements AfterViewInit {
     if (this.directionalLight) {
       this.directionalLight.intensity = this.directionalIntensity();
       this.directionalLight.color.set(this.directionalColor());
+      this.directionalLight.castShadow = this.shadowsEnabled();
+      this.directionalLight.shadow.bias = this.shadowBias();
+      if (this.directionalLight.shadow.mapSize.width !== this.shadowResolution()) {
+        this.directionalLight.shadow.mapSize.set(this.shadowResolution(), this.shadowResolution());
+        this.directionalLight.shadow.map?.dispose();
+        this.directionalLight.shadow.map = null;
+      }
     }
     if (this.pointLight) {
       this.pointLight.intensity = this.pointLightIntensity();
-      // Follow camera slightly for point light if needed, or keep static
+    }
+    if (this.spotLight) {
+      this.spotLight.intensity = this.spotLightEnabled() ? this.spotLightIntensity() : 0;
+      this.spotLight.color.set(this.spotLightColor());
+      this.spotLight.angle = this.spotLightAngle();
+      this.spotLight.position.set(this.spotLightPosX(), this.spotLightPosY(), this.spotLightPosZ());
+      this.spotLight.castShadow = this.shadowsEnabled();
+    }
+    if (this.ground) {
+      this.ground.visible = this.shadowsEnabled();
     }
     
     this.controls.update();
@@ -428,6 +540,19 @@ export class ModelViewer implements AfterViewInit {
     const box = new THREE.Box3().setFromObject(model);
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
+
+    // Enable shadows for model
+    model.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+
+    // Update ground position to be just below the model
+    if (this.ground) {
+      this.ground.position.y = box.min.y - 0.01;
+    }
 
     // Update controls target
     this.controls.target.copy(center);
