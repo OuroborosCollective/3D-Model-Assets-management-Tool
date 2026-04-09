@@ -118,6 +118,10 @@ import {marked} from 'marked';
               <label for="point-intensity" class="block text-xs text-gray-500 mb-1">Punktlicht (Spotlight)</label>
               <input id="point-intensity" type="range" min="0" max="5" step="0.1" [ngModel]="pointLightIntensity()" (ngModelChange)="pointLightIntensity.set($event)" class="w-full" />
             </div>
+            <div>
+              <label for="bg-color" class="block text-xs text-gray-500 mb-1">Hintergrundfarbe</label>
+              <input id="bg-color" type="color" [ngModel]="backgroundColor()" (ngModelChange)="backgroundColor.set($event)" class="w-full h-8 rounded border-0 p-0" />
+            </div>
           </div>
 
           <div class="mt-4 border-t pt-4">
@@ -236,10 +240,11 @@ export class ModelViewer implements AfterViewInit {
   loadingProgress = signal(0);
   
   // Lighting signals
-  ambientIntensity = signal(0.5);
-  directionalIntensity = signal(1.0);
+  ambientIntensity = signal(0.8);
+  directionalIntensity = signal(1.5);
   directionalColor = signal('#ffffff');
   pointLightIntensity = signal(0);
+  backgroundColor = signal('#f0f0f0');
   
   // Shadow signals
   shadowsEnabled = signal(true);
@@ -269,6 +274,7 @@ export class ModelViewer implements AfterViewInit {
   
   private ambientLight!: THREE.AmbientLight;
   private directionalLight!: THREE.DirectionalLight;
+  private hemisphereLight!: THREE.HemisphereLight;
   private pointLight!: THREE.PointLight;
   private spotLight!: THREE.SpotLight;
   private ground!: THREE.Mesh;
@@ -359,6 +365,7 @@ export class ModelViewer implements AfterViewInit {
     const height = this.viewerContainer.nativeElement.clientHeight;
 
     this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(this.backgroundColor());
     this.camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
     this.renderer = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true});
     this.renderer.setSize(width, height);
@@ -367,8 +374,9 @@ export class ModelViewer implements AfterViewInit {
     this.viewerContainer.nativeElement.appendChild(this.renderer.domElement);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enableDamping = true;
 
-    this.directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    this.directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
     this.directionalLight.position.set(5, 10, 5);
     this.directionalLight.castShadow = true;
     this.directionalLight.shadow.mapSize.width = this.shadowResolution();
@@ -378,8 +386,11 @@ export class ModelViewer implements AfterViewInit {
     this.directionalLight.shadow.bias = this.shadowBias();
     this.scene.add(this.directionalLight);
     
-    this.ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
     this.scene.add(this.ambientLight);
+
+    this.hemisphereLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.5);
+    this.scene.add(this.hemisphereLight);
     
     this.pointLight = new THREE.PointLight(0xffffff, 0);
     this.pointLight.position.set(0, 5, 0);
@@ -407,6 +418,7 @@ export class ModelViewer implements AfterViewInit {
     requestAnimationFrame(() => this.animate());
     
     // Update lights from signals
+    if (this.scene) this.scene.background = new THREE.Color(this.backgroundColor());
     if (this.ambientLight) this.ambientLight.intensity = this.ambientIntensity();
     if (this.directionalLight) {
       this.directionalLight.intensity = this.directionalIntensity();
@@ -626,7 +638,7 @@ export class ModelViewer implements AfterViewInit {
     let cameraDistance = Math.abs(maxDim / Math.sin(fov / 2));
     
     // Add some padding
-    cameraDistance *= 1.5;
+    cameraDistance *= 1.1;
 
     // Position camera
     this.camera.position.set(center.x, center.y, center.z + cameraDistance);
@@ -717,7 +729,7 @@ export class ModelViewer implements AfterViewInit {
     try {
       const desc = await this.descService.generateDescription(this.modelName(), this.triangleCount());
       this.description.set(desc);
-    } catch (_err) {
+    } catch {
       this.errorMessage.set('Fehler beim Generieren der Beschreibung.');
     } finally {
       this.isLoading.set(false);
