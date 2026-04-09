@@ -15,7 +15,7 @@ import {TechnicalInfoPanel} from './technical-info-panel/technical-info-panel';
         <app-model-viewer (saveModel)="onSaveModel($event)" />
       </div>
       <div>
-        <app-catalog-view (selectModel)="onSelectModel($event)" />
+        <app-catalog-view (selectModel)="onSelectModel($event)" (previewScreenshot)="onPreviewScreenshot($event)" />
         <app-technical-info [modelName]="currentModel()?.name || ''" [triangleCount]="currentModel()?.polygonCount || 0" [fileFormat]="'GLB/FBX'" />
       </div>
     </div>
@@ -44,5 +44,9 @@ export class App {
   onSelectModel(event: {model: ModelAsset, screenshotIndex: number}) {
     this.currentModel.set(event.model);
     this.modelViewer.loadModel(event.model, event.screenshotIndex);
+  }
+
+  onPreviewScreenshot(url: string) {
+    this.modelViewer.openLargePreview(url);
   }
 }

@@ -19,9 +19,21 @@ import {ModelAsset} from '../catalog.service';
         <p class="text-red-600 mb-4">{{ errorMessage() }}</p>
       }
       
-      <div #viewerContainer class="w-full h-96 bg-gray-100 rounded-lg overflow-hidden relative"></div>
+      <div #viewerContainer class="w-full h-96 bg-gray-100 rounded-lg overflow-hidden relative">
+        @if (isLoading()) {
+          <div class="absolute inset-0 flex items-center justify-center bg-gray-100/80 z-10">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          </div>
+        }
+      </div>
       @if (selectedScreenshot()) {
-        <img [src]="selectedScreenshot()" alt="Preview" class="w-full h-96 object-contain mt-4 rounded-lg border" />
+        <img [src]="selectedScreenshot()" alt="Preview" class="w-full h-96 object-contain mt-4 rounded-lg border cursor-pointer" (click)="openLargePreview(selectedScreenshot()!)" (keydown.enter)="openLargePreview(selectedScreenshot()!)" tabindex="0" role="button" />
+      }
+      
+      @if (largePreviewUrl()) {
+        <div class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" (click)="closeLargePreview()" (keydown.escape)="closeLargePreview()" tabindex="0" role="button">
+          <img [src]="largePreviewUrl()" alt="Large Preview" class="max-w-full max-h-full object-contain rounded-lg" />
+        </div>
       }
       
       <div class="mt-4 p-4 bg-white shadow rounded-lg">
@@ -65,8 +77,19 @@ export class ModelViewer implements AfterViewInit {
   private  model: THREE.Object3D | null = null;
   capturedScreenshots = signal<string[]>([]);
   selectedScreenshot = signal<string | null>(null);
+  largePreviewUrl = signal<string | null>(null);
+  isLoading = signal(false);
+
+  openLargePreview(url: string) {
+    this.largePreviewUrl.set(url);
+  }
+
+  closeLargePreview() {
+    this.largePreviewUrl.set(null);
+  }
 
   async loadModel(model: ModelAsset, screenshotIndex = 0) {
+    this.isLoading.set(true);
     this.modelName = model.name;
     this.triangleCount.set(model.polygonCount);
     this.description.set(model.description);
@@ -83,13 +106,18 @@ export class ModelViewer implements AfterViewInit {
       const fbxLoader = loader as FBXLoader;
       this.model = fbxLoader.parse(arrayBuffer, '');
       this.scene.add(this.model);
+      this.fitModelToView(this.model);
+      this.isLoading.set(false);
     } else {
       const gltfLoader = loader as GLTFLoader;
       gltfLoader.parse(arrayBuffer, '', (gltf) => {
         this.model = gltf.scene;
         this.scene.add(this.model);
+        this.fitModelToView(this.model);
+        this.isLoading.set(false);
       }, (error) => {
         this.errorMessage.set('Fehler beim Parsen des Modells: ' + error.message);
+        this.isLoading.set(false);
       });
     }
   }
@@ -146,11 +174,13 @@ export class ModelViewer implements AfterViewInit {
       return;
     }
 
+    this.isLoading.set(true);
     if (this.model) this.scene.remove(this.model);
 
     const reader = new FileReader();
     reader.onerror = () => {
       this.errorMessage.set('Fehler beim Lesen der Datei.');
+      this.isLoading.set(false);
     };
     reader.onload = (e) => {
       try {
@@ -160,13 +190,18 @@ export class ModelViewer implements AfterViewInit {
           const fbxLoader = loader as FBXLoader;
           this.model = fbxLoader.parse(e.target?.result as ArrayBuffer, '');
           this.scene.add(this.model);
+          this.fitModelToView(this.model);
+          this.isLoading.set(false);
         } else {
           const gltfLoader = loader as GLTFLoader;
           gltfLoader.parse(e.target?.result as ArrayBuffer, '', (gltf) => {
             this.model = gltf.scene;
             this.scene.add(this.model);
+            this.fitModelToView(this.model);
+            this.isLoading.set(false);
           }, (error) => {
             this.errorMessage.set('Fehler beim Parsen des Modells: ' + error.message);
+            this.isLoading.set(false);
           });
         }
         
@@ -177,9 +212,32 @@ export class ModelViewer implements AfterViewInit {
         }
       } catch {
         this.errorMessage.set('Fehler beim Verarbeiten des Modells.');
+        this.isLoading.set(false);
       }
     };
     reader.readAsArrayBuffer(file);
+  }
+
+  private fitModelToView(model: THREE.Object3D) {
+    const box = new THREE.Box3().setFromObject(model);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+
+    // Update controls target
+    this.controls.target.copy(center);
+
+    // Calculate distance to fit the model
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const fov = this.camera.fov * (Math.PI / 180);
+    let cameraDistance = Math.abs(maxDim / Math.sin(fov / 2));
+    
+    // Add some padding
+    cameraDistance *= 1.5;
+
+    // Position camera
+    this.camera.position.set(center.x, center.y, center.z + cameraDistance);
+    this.camera.lookAt(center);
+    this.controls.update();
   }
 
   private calculateTriangleCount(object: THREE.Object3D): number {
@@ -228,6 +286,11 @@ export class ModelViewer implements AfterViewInit {
   }
   
   async generateDescription() {
+    if (!this.modelName || this.triangleCount() === 0) {
+      this.errorMessage.set('Bitte laden Sie zuerst ein Modell und geben Sie einen Namen ein.');
+      return;
+    }
+    
     this.description.set('Generiere Beschreibung...');
     const desc = await this.descService.generateDescription(this.modelName, this.triangleCount());
     this.description.set(desc);

@@ -12,9 +12,14 @@ import {CommonModule} from '@angular/common';
           <div class="bg-slate-900/50 border border-amber-900/30 backdrop-blur-sm rounded-xl p-4 transition hover:border-amber-500/50 cursor-pointer">
             <div class="flex gap-2 overflow-x-auto mb-4 pb-2">
               @for (screenshot of model.screenshots; track screenshot; let i = $index) {
-                <button (click)="selectModel.emit({model, screenshotIndex: i})" class="w-20 h-20 p-0 border-0 rounded-lg overflow-hidden flex-shrink-0">
-                  <img [src]="screenshot" [alt]="model.name" loading="lazy" class="w-full h-full object-cover" />
-                </button>
+                <div class="relative w-20 h-20 flex-shrink-0">
+                  <button (click)="selectModel.emit({model, screenshotIndex: i})" class="w-full h-full p-0 border-0 rounded-lg overflow-hidden">
+                    <img [src]="screenshot" [alt]="model.name" loading="lazy" class="w-full h-full object-cover" />
+                  </button>
+                  <button (click)="previewScreenshot.emit(screenshot)" class="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1 hover:bg-black/80">
+                    <span class="material-icons text-xs">zoom_in</span>
+                  </button>
+                </div>
               }
             </div>
             <button (click)="selectModel.emit({model, screenshotIndex: 0})" class="block w-full text-left font-serif text-xl text-amber-100 mb-1">{{model.name}}</button>
@@ -30,6 +35,7 @@ import {CommonModule} from '@angular/common';
 export class CatalogView {
   models: ModelAsset[] = [];
   @Output() selectModel = new EventEmitter<{model: ModelAsset, screenshotIndex: number}>();
+  @Output() previewScreenshot = new EventEmitter<string>();
   private catalog = inject(CatalogService);
 
   constructor() {
