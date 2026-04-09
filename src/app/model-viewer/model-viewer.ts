@@ -16,13 +16,27 @@ import {ModelAsset} from '../catalog.service';
       <input type="text" [(ngModel)]="modelName" placeholder="Modellname" class="mb-2 block w-full p-2 border rounded" />
       <input type="file" (change)="onFileSelected($event)" class="mb-4 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" accept=".glb,.gltf,.fbx" />
       @if (errorMessage()) {
-        <p class="text-red-600 mb-4">{{ errorMessage() }}</p>
+        <div class="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div class="flex items-start gap-3">
+            <span class="material-icons text-red-600">error_outline</span>
+            <div>
+              <p class="text-red-700 font-medium">{{ errorMessage() }}</p>
+              @if (errorSuggestion()) {
+                <p class="text-red-600 text-xs mt-1"><strong>Vorschlag:</strong> {{ errorSuggestion() }}</p>
+              }
+            </div>
+          </div>
+        </div>
       }
       
       <div #viewerContainer class="w-full h-96 bg-gray-100 rounded-lg overflow-hidden relative">
         @if (isLoading()) {
-          <div class="absolute inset-0 flex items-center justify-center bg-gray-100/80 z-10">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <div class="absolute inset-0 flex flex-col items-center justify-center bg-gray-100/80 z-10">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+            <p class="text-sm font-medium text-blue-600">Lade Modell... {{ loadingProgress() }}%</p>
+            <div class="w-48 h-2 bg-gray-200 rounded-full mt-2 overflow-hidden">
+              <div class="h-full bg-blue-600 transition-all duration-300" [style.width.%]="loadingProgress()"></div>
+            </div>
           </div>
         }
       </div>
@@ -37,22 +51,81 @@ import {ModelAsset} from '../catalog.service';
       }
       
       <div class="mt-4 p-4 bg-white shadow rounded-lg">
-        <h3 class="font-semibold">Technische Daten:</h3>
-        <p>Dreiecke: {{ triangleCount() }}</p>
-        <div class="mt-2 flex flex-wrap gap-2">
-          <button (click)="captureCurrentScreenshot()" class="bg-blue-600 text-white px-3 py-1 rounded text-sm">Aktuell</button>
-          <button (click)="captureAngle(0, 0, 5)" class="bg-blue-600 text-white px-3 py-1 rounded text-sm">Front</button>
-          <button (click)="captureAngle(0, 5, 0)" class="bg-blue-600 text-white px-3 py-1 rounded text-sm">Oben</button>
-          <button (click)="captureAngle(5, 0, 0)" class="bg-blue-600 text-white px-3 py-1 rounded text-sm">Seite</button>
-          <button (click)="captureScreenshots()" class="bg-green-600 text-white px-3 py-1 rounded text-sm">360°</button>
+        <h3 class="font-semibold mb-2">Technische Daten & Screenshots:</h3>
+        <p class="text-sm text-gray-600 mb-2">Dreiecke: {{ triangleCount() }}</p>
+        
+        <div class="flex flex-wrap gap-2 mb-4">
+          <button (click)="captureCurrentScreenshot()" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition">Erfassen</button>
+          <button (click)="captureAngle(0, 0, 5)" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition">Front</button>
+          <button (click)="captureAngle(0, 5, 0)" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition">Oben</button>
+          <button (click)="captureAngle(5, 0, 0)" class="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 transition">Seite</button>
+          <button (click)="captureScreenshots()" class="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition">360°</button>
         </div>
-        <button (click)="generateDescription()" class="mt-4 bg-purple-600 text-white px-4 py-2 rounded-lg">KI-Beschreibung generieren</button>
-        <button (click)="onSave()" class="mt-4 bg-red-600 text-white px-4 py-2 rounded-lg">In Katalog speichern</button>
-        <p class="mt-2 text-sm text-gray-700">{{ description() }}</p>
+
+        <div class="border-t pt-4 mb-4">
+          <h4 class="text-sm font-bold mb-2">High-Res Download (1920x1080):</h4>
+          <div class="flex gap-2">
+            <button (click)="downloadScreenshot('png')" class="bg-slate-800 text-white px-3 py-1 rounded text-sm hover:bg-slate-900 transition flex items-center gap-1">
+              <span class="material-icons text-xs">download</span> PNG
+            </button>
+            <button (click)="downloadScreenshot('jpeg')" class="bg-slate-800 text-white px-3 py-1 rounded text-sm hover:bg-slate-900 transition flex items-center gap-1">
+              <span class="material-icons text-xs">download</span> JPEG
+            </button>
+          </div>
+        </div>
+
+        <div class="border-t pt-4 mb-4">
+          <h4 class="text-sm font-bold mb-2">Beleuchtung & Ausleuchtung:</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label for="ambient-intensity" class="block text-xs text-gray-500 mb-1">Umgebungslicht (Ambient)</label>
+              <input id="ambient-intensity" type="range" min="0" max="2" step="0.1" [ngModel]="ambientIntensity()" (ngModelChange)="ambientIntensity.set($event)" class="w-full" />
+            </div>
+            <div>
+              <label for="directional-intensity" class="block text-xs text-gray-500 mb-1">Direktes Licht (Directional)</label>
+              <input id="directional-intensity" type="range" min="0" max="3" step="0.1" [ngModel]="directionalIntensity()" (ngModelChange)="directionalIntensity.set($event)" class="w-full" />
+            </div>
+            <div>
+              <label for="directional-color" class="block text-xs text-gray-500 mb-1">Lichtfarbe</label>
+              <input id="directional-color" type="color" [ngModel]="directionalColor()" (ngModelChange)="directionalColor.set($event)" class="w-full h-8 rounded border-0 p-0" />
+            </div>
+            <div>
+              <label for="point-intensity" class="block text-xs text-gray-500 mb-1">Punktlicht (Spotlight)</label>
+              <input id="point-intensity" type="range" min="0" max="5" step="0.1" [ngModel]="pointLightIntensity()" (ngModelChange)="pointLightIntensity.set($event)" class="w-full" />
+            </div>
+          </div>
+          
+          <div class="mt-4">
+            <label for="lighting-preset" class="block text-xs text-gray-500 mb-1">Licht-Presets</label>
+            <select id="lighting-preset" (change)="applyLightingPreset($any($event.target).value)" class="w-full p-2 border rounded text-sm bg-white">
+              <option value="standard">Standard</option>
+              <option value="studio">Studio (Hell & Weich)</option>
+              <option value="outdoor">Outdoor (Natürlich)</option>
+              <option value="dramatic">Dramatisch (Kontrastreich)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="border-t pt-4 mb-4">
+          <h4 class="text-sm font-bold mb-2">Umgebung (HDRI):</h4>
+          <input type="file" (change)="onHdriSelected($event)" class="block w-full text-xs text-gray-500 file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200" accept="image/*" />
+          <p class="text-[10px] text-gray-400 mt-1">Laden Sie ein Panorama-Bild (.jpg, .png) für Reflexionen hoch.</p>
+        </div>
+
+        <div class="border-t pt-4">
+          <button (click)="generateDescription()" class="w-full bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition mb-2">KI-Beschreibung generieren</button>
+          <button (click)="onSave()" class="w-full bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition">In Katalog speichern</button>
+        </div>
+        
+        @if (description()) {
+          <div class="mt-4 p-3 bg-slate-50 rounded border text-sm prose max-w-none">
+            {{ description() }}
+          </div>
+        }
         
         <div class="mt-4 flex gap-2">
-          <a href="https://sketchfab.com/upload" target="_blank" class="bg-black text-white px-4 py-2 rounded-lg">Zu Sketchfab</a>
-          <a href="https://www.etsy.com/sell" target="_blank" class="bg-orange-600 text-white px-4 py-2 rounded-lg">Zu Etsy</a>
+          <a href="https://sketchfab.com/upload" target="_blank" class="flex-1 text-center bg-black text-white px-4 py-2 rounded-lg hover:opacity-90 transition">Zu Sketchfab</a>
+          <a href="https://www.etsy.com/sell" target="_blank" class="flex-1 text-center bg-orange-600 text-white px-4 py-2 rounded-lg hover:opacity-90 transition">Zu Etsy</a>
         </div>
       </div>
     </div>
@@ -62,19 +135,36 @@ import {ModelAsset} from '../catalog.service';
 })
 export class ModelViewer implements AfterViewInit {
   @ViewChild('viewerContainer') viewerContainer!: ElementRef;
-  @Output() saveModel = new EventEmitter<{name: string, triangleCount: number, description: string, screenshots: string[]}>();
+  @Output() saveModel = new EventEmitter<{name: string, triangleCount: number, description: string, screenshots: string[], fileData: Blob, fileName: string}>();
   
   modelName = '';
   triangleCount = signal(0);
   description = signal('');
   errorMessage = signal('');
+  errorSuggestion = signal('');
+  loadingProgress = signal(0);
+  
+  // Lighting signals
+  ambientIntensity = signal(0.5);
+  directionalIntensity = signal(1.0);
+  directionalColor = signal('#ffffff');
+  pointLightIntensity = signal(0);
+  
+  private textureLoader = new THREE.TextureLoader();
   private descService = inject(DescriptionGeneratorService);
   private platformId = inject(PLATFORM_ID);
   private scene!: THREE.Scene;
   private camera!: THREE.PerspectiveCamera;
   private renderer!: THREE.WebGLRenderer;
   private controls!: OrbitControls;
-  private  model: THREE.Object3D | null = null;
+  private model: THREE.Object3D | null = null;
+  private currentFileBlob: Blob | null = null;
+  private currentFileName = '';
+  
+  private ambientLight!: THREE.AmbientLight;
+  private directionalLight!: THREE.DirectionalLight;
+  private pointLight!: THREE.PointLight;
+
   capturedScreenshots = signal<string[]>([]);
   selectedScreenshot = signal<string | null>(null);
   largePreviewUrl = signal<string | null>(null);
@@ -90,44 +180,60 @@ export class ModelViewer implements AfterViewInit {
 
   async loadModel(model: ModelAsset, screenshotIndex = 0) {
     this.isLoading.set(true);
+    this.loadingProgress.set(0);
+    this.errorMessage.set('');
+    this.errorSuggestion.set('');
+    
     this.modelName = model.name;
     this.triangleCount.set(model.polygonCount);
     this.description.set(model.description);
     this.capturedScreenshots.set(model.screenshots);
     this.selectedScreenshot.set(model.screenshots[screenshotIndex] || model.screenshots[0] || null);
+    this.currentFileBlob = model.fileData;
+    this.currentFileName = model.fileName;
     
-    const arrayBuffer = await model.fileData.arrayBuffer();
-    
-    if (this.model) this.scene.remove(this.model);
-    
-    const loader = model.fileName.endsWith('.fbx') ? new FBXLoader() : new GLTFLoader();
-    
-    if (model.fileName.endsWith('.fbx')) {
-      const fbxLoader = loader as FBXLoader;
-      this.model = fbxLoader.parse(arrayBuffer, '');
-      this.scene.add(this.model);
-      this.fitModelToView(this.model);
-      this.isLoading.set(false);
-    } else {
-      const gltfLoader = loader as GLTFLoader;
-      gltfLoader.parse(arrayBuffer, '', (gltf) => {
-        this.model = gltf.scene;
+    try {
+      const arrayBuffer = await model.fileData.arrayBuffer();
+      
+      if (this.model) this.scene.remove(this.model);
+      
+      const loader = model.fileName.endsWith('.fbx') ? new FBXLoader() : new GLTFLoader();
+      
+      if (model.fileName.endsWith('.fbx')) {
+        const fbxLoader = loader as FBXLoader;
+        this.model = fbxLoader.parse(arrayBuffer, '');
         this.scene.add(this.model);
         this.fitModelToView(this.model);
         this.isLoading.set(false);
-      }, (error) => {
-        this.errorMessage.set('Fehler beim Parsen des Modells: ' + error.message);
-        this.isLoading.set(false);
-      });
+      } else {
+        const gltfLoader = loader as GLTFLoader;
+        gltfLoader.parse(arrayBuffer, '', (gltf) => {
+          this.model = gltf.scene;
+          this.scene.add(this.model);
+          this.fitModelToView(this.model);
+          this.isLoading.set(false);
+          this.loadingProgress.set(100);
+        }, (error) => {
+          this.handleLoadError(error);
+        });
+      }
+    } catch (err) {
+      this.handleLoadError(err);
     }
   }
 
   onSave() {
+    if (!this.currentFileBlob) {
+      this.errorMessage.set('Kein Modell zum Speichern vorhanden.');
+      return;
+    }
     this.saveModel.emit({
       name: this.modelName,
       triangleCount: this.triangleCount(),
       description: this.description(),
-      screenshots: this.capturedScreenshots()
+      screenshots: this.capturedScreenshots(),
+      fileData: this.currentFileBlob,
+      fileName: this.currentFileName
     });
   }
 
@@ -148,10 +254,16 @@ export class ModelViewer implements AfterViewInit {
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
 
-    const light = new THREE.DirectionalLight(0xffffff, 1);
-    light.position.set(1, 1, 1);
-    this.scene.add(light);
-    this.scene.add(new THREE.AmbientLight(0x404040));
+    this.directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+    this.directionalLight.position.set(1, 1, 1);
+    this.scene.add(this.directionalLight);
+    
+    this.ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+    this.scene.add(this.ambientLight);
+    
+    this.pointLight = new THREE.PointLight(0xffffff, 0);
+    this.pointLight.position.set(0, 5, 0);
+    this.scene.add(this.pointLight);
 
     this.camera.position.z = 5;
     this.animate();
@@ -159,6 +271,18 @@ export class ModelViewer implements AfterViewInit {
 
   private animate() {
     requestAnimationFrame(() => this.animate());
+    
+    // Update lights from signals
+    if (this.ambientLight) this.ambientLight.intensity = this.ambientIntensity();
+    if (this.directionalLight) {
+      this.directionalLight.intensity = this.directionalIntensity();
+      this.directionalLight.color.set(this.directionalColor());
+    }
+    if (this.pointLight) {
+      this.pointLight.intensity = this.pointLightIntensity();
+      // Follow camera slightly for point light if needed, or keep static
+    }
+    
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
   }
@@ -167,19 +291,32 @@ export class ModelViewer implements AfterViewInit {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     this.errorMessage.set('');
+    this.errorSuggestion.set('');
+    this.loadingProgress.set(0);
+    
     if (!file) return;
 
     if (!file.name.match(/\.(glb|gltf|fbx)$/i)) {
-      this.errorMessage.set('Ungültiges Dateiformat. Bitte wählen Sie eine .glb, .gltf oder .fbx Datei.');
+      this.errorMessage.set('Ungültiges Dateiformat.');
+      this.errorSuggestion.set('Bitte wählen Sie eine .glb, .gltf oder .fbx Datei.');
       return;
     }
 
     this.isLoading.set(true);
+    this.currentFileBlob = file;
+    this.currentFileName = file.name;
     if (this.model) this.scene.remove(this.model);
 
     const reader = new FileReader();
+    reader.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const progress = Math.round((e.loaded / e.total) * 50); // First 50% is reading
+        this.loadingProgress.set(progress);
+      }
+    };
     reader.onerror = () => {
       this.errorMessage.set('Fehler beim Lesen der Datei.');
+      this.errorSuggestion.set('Die Datei könnte beschädigt sein oder von einem anderen Programm blockiert werden.');
       this.isLoading.set(false);
     };
     reader.onload = (e) => {
@@ -192,6 +329,7 @@ export class ModelViewer implements AfterViewInit {
           this.scene.add(this.model);
           this.fitModelToView(this.model);
           this.isLoading.set(false);
+          this.loadingProgress.set(100);
         } else {
           const gltfLoader = loader as GLTFLoader;
           gltfLoader.parse(e.target?.result as ArrayBuffer, '', (gltf) => {
@@ -199,9 +337,9 @@ export class ModelViewer implements AfterViewInit {
             this.scene.add(this.model);
             this.fitModelToView(this.model);
             this.isLoading.set(false);
+            this.loadingProgress.set(100);
           }, (error) => {
-            this.errorMessage.set('Fehler beim Parsen des Modells: ' + error.message);
-            this.isLoading.set(false);
+            this.handleLoadError(error);
           });
         }
         
@@ -210,12 +348,80 @@ export class ModelViewer implements AfterViewInit {
           this.captureCurrentScreenshot();
           this.selectedScreenshot.set(this.capturedScreenshots()[0]);
         }
-      } catch {
-        this.errorMessage.set('Fehler beim Verarbeiten des Modells.');
-        this.isLoading.set(false);
+      } catch (err) {
+        this.handleLoadError(err);
       }
     };
     reader.readAsArrayBuffer(file);
+  }
+
+  private handleLoadError(error: unknown) {
+    console.error('Model load error:', error);
+    this.isLoading.set(false);
+    this.loadingProgress.set(0);
+    
+    const msg = error instanceof Error ? error.message : String(error);
+    
+    if (msg.includes('JSON')) {
+      this.errorMessage.set('Ungültige JSON-Struktur im Modell.');
+      this.errorSuggestion.set('Stellen Sie sicher, dass die .gltf Datei valide ist. Versuchen Sie, sie in Blender neu zu exportieren.');
+    } else if (msg.includes('buffer')) {
+      this.errorMessage.set('Fehler beim Verarbeiten der Binärdaten.');
+      this.errorSuggestion.set('Die Datei ist möglicherweise unvollständig oder beschädigt.');
+    } else if (msg.includes('version')) {
+      this.errorMessage.set('Nicht unterstützte Version des Dateiformats.');
+      this.errorSuggestion.set('Aktualisieren Sie Ihren Exporter auf die neueste Version (z.B. glTF 2.0).');
+    } else {
+      this.errorMessage.set('Fehler beim Laden des Modells.');
+      this.errorSuggestion.set('Versuchen Sie das Modell als .glb (Binary glTF) zu exportieren, da dies am stabilsten ist.');
+    }
+  }
+
+  onHdriSelected(event: Event) {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const url = e.target?.result as string;
+      this.textureLoader.load(url, (texture) => {
+        texture.mapping = THREE.EquirectangularReflectionMapping;
+        this.scene.environment = texture;
+        this.scene.background = texture;
+        this.scene.backgroundBlurriness = 0.5;
+      });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  applyLightingPreset(preset: string) {
+    switch (preset) {
+      case 'studio':
+        this.ambientIntensity.set(0.8);
+        this.directionalIntensity.set(1.5);
+        this.directionalColor.set('#ffffff');
+        this.pointLightIntensity.set(0.5);
+        break;
+      case 'outdoor':
+        this.ambientIntensity.set(1.2);
+        this.directionalIntensity.set(2.0);
+        this.directionalColor.set('#fff4e5');
+        this.pointLightIntensity.set(0);
+        break;
+      case 'dramatic':
+        this.ambientIntensity.set(0.2);
+        this.directionalIntensity.set(2.5);
+        this.directionalColor.set('#ffccaa');
+        this.pointLightIntensity.set(2.0);
+        break;
+      default:
+        this.ambientIntensity.set(0.5);
+        this.directionalIntensity.set(1.0);
+        this.directionalColor.set('#ffffff');
+        this.pointLightIntensity.set(0);
+        break;
+    }
   }
 
   private fitModelToView(model: THREE.Object3D) {
@@ -261,6 +467,33 @@ export class ModelViewer implements AfterViewInit {
     const dataURL = this.renderer.domElement.toDataURL('image/png');
     this.capturedScreenshots.update(list => [...list, dataURL]);
     if (!this.selectedScreenshot()) this.selectedScreenshot.set(dataURL);
+  }
+
+  async downloadScreenshot(format: 'png' | 'jpeg' = 'png') {
+    const width = 1920;
+    const height = 1080;
+    
+    // Resize for high-res
+    this.renderer.setSize(width, height, false);
+    this.camera.aspect = width / height;
+    this.camera.updateProjectionMatrix();
+    
+    this.renderer.render(this.scene, this.camera);
+    
+    const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
+    const dataURL = this.renderer.domElement.toDataURL(mimeType, 0.9); // 0.9 quality for jpeg
+    
+    const link = document.createElement('a');
+    link.download = `screenshot-${Date.now()}.${format}`;
+    link.href = dataURL;
+    link.click();
+    
+    // Restore size
+    const containerWidth = this.viewerContainer.nativeElement.clientWidth;
+    const containerHeight = this.viewerContainer.nativeElement.clientHeight;
+    this.renderer.setSize(containerWidth, containerHeight);
+    this.camera.aspect = containerWidth / containerHeight;
+    this.camera.updateProjectionMatrix();
   }
 
   captureAngle(x: number, y: number, z: number) {

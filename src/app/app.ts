@@ -27,18 +27,18 @@ export class App {
   @ViewChild(ModelViewer) modelViewer!: ModelViewer;
   currentModel = signal<ModelAsset | null>(null);
 
-  async onSaveModel(modelData: {name: string, triangleCount: number, description: string, screenshots: string[]}) {
+  async onSaveModel(modelData: {name: string, triangleCount: number, description: string, screenshots: string[], fileData: Blob, fileName: string}) {
     const newModel: ModelAsset = {
       id: Date.now().toString(),
       name: modelData.name,
       polygonCount: modelData.triangleCount,
       description: modelData.description,
       screenshots: modelData.screenshots,
-      fileData: new Blob(), // Placeholder
-      fileName: 'model.glb'
+      fileData: modelData.fileData,
+      fileName: modelData.fileName
     };
     await this.catalog.saveModel(newModel);
-    alert('Modell gespeichert!');
+    alert('Modell erfolgreich im Katalog gespeichert!');
   }
 
   onSelectModel(event: {model: ModelAsset, screenshotIndex: number}) {
